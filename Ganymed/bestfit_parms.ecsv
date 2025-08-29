@@ -1,0 +1,38 @@
+# %ECSV 1.0
+# ---
+# datatype:
+# - {name: TI, unit: tiu, datatype: float64}
+# - {name: emis, datatype: float64}
+# - {name: index, datatype: float64}
+# - {name: loss, datatype: float64}
+# - {name: fit, unit: Jy, datatype: float64}
+# - {name: res, unit: Jy, datatype: float64}
+# meta: !!omap
+# - __serialized_columns__:
+#     TI:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: !astropy.units.Unit {unit: tiu}
+#       value: !astropy.table.SerializedColumn {name: TI}
+#     emis:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: &id001 !astropy.units.Unit {unit: ''}
+#       value: !astropy.table.SerializedColumn {name: emis}
+#     fit:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: &id002 !astropy.units.Unit {unit: Jy}
+#       value: !astropy.table.SerializedColumn {name: fit}
+#     index:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id001
+#       value: !astropy.table.SerializedColumn {name: index}
+#     loss:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id001
+#       value: !astropy.table.SerializedColumn {name: loss}
+#     res:
+#       __class__: astropy.units.quantity.Quantity
+#       unit: *id002
+#       value: !astropy.table.SerializedColumn {name: res}
+# schema: astropy-2.0
+TI emis index loss fit res
+160.0 0.5 1.0010000467300415 1.0 4.2074787139892595e-07 0.0017895792521286011
