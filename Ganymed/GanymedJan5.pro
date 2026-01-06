@@ -74,44 +74,72 @@ delta = replicate(delta_val, nlon)
 
 print, 'Output Longitudes will be: ', subelon
 
+
 for j=0, n_elements(Tfiles) - 1 do begin
-
-  print, 'processing file: '+(strsplit(Tfiles[j], '/', /ext))[-1]
-
-  ; load reference temperature array
+; load reference temperature array
   tref = readfits(Tfiles[j], hdr, /silent)
+
+  ; --- REPAIR START (Updated) ---
   
-  ; -----------------------------------------------------------------
-  ; MODIFICATION 2: Fix Dimensions (Debug)
-  ; Use REFORM() to ensure arrays are 1D vectors, not (1, N) or (N, 1)
-  ; -----------------------------------------------------------------
-  lst = readfits(Tfiles[j], ext=1, /silent)
-  lst = reform(lst) ; <--- CRITICAL FIX for concatenation error
+  ; 1. Process LST (Time)
+  ; Read, Cast to Float, and flatten to 1D
+  lst = float(readfits(Tfiles[j], ext=1, /silent))
+  lst = reform(lst, n_elements(lst))
   
-  hour_angle = ((lst - 12) * 15 + 360) mod 360  ; hour angle from local noon in degrees
+  ; Calculate hour_angle
+  hour_angle = ((lst - 12.0) * 15.0 + 360.0) mod 360.0
   
+  ; Construct time argument (concatenation happens here, ensure hour_angle is Float)
+  time_arg = [hour_angle, 360.0]
+
+  ; 2. Process ZZ (Depth) - Apply Float Cast + Reform
+  ; This prevents INT errors if the FITS file stores depth as integers
+  zz = float(readfits(Tfiles[j], ext=2, /silent))
+  zz = reform(zz, n_elements(zz))
+
+  ; 3. Process LATS (Latitudes) - Apply Float Cast + Reform
+  ; This prevents INT(360) errors if the FITS file stores lats as integers
+  lats = float(readfits(Tfiles[j], ext=3, /silent))
+  lats = reform(lats, n_elements(lats))
+  
+  ; DEBUG: Print dimensions to catch any corrupted files
+  ; If the script crashes again, these prints will tell us which array is wrong
+  print, 'DEBUG INFO for: ', (strsplit(Tfiles[j], '/', /ext))[-1]
+  print, '  LST Dims: ', size(lst, /dim)
+  print, '  ZZ Dims:  ', size(zz, /dim)
+  print, '  Lats Dims:', size(lats, /dim)
+
+  ; --- REPAIR END ---
+  ; 3. 计算 hour_angle
+  hour_angle = ((lst - 12.0) * 15.0 + 360.0) mod 360.0
+
+  ; 4. 提前构建 time 参数数组，确保拼接成功
+  ;    将 360.0 (周期) 拼接到 hour_angle 数组末尾
+  time_arg = [hour_angle, 360.0]
+  ; --- 修复部分 END ---
+
   zz = readfits(Tfiles[j], ext=2, /silent)
-  zz = reform(zz)   ; <--- Good practice to reform this too
-  
+  zz = reform(zz, n_elements(zz)) ; 同样处理 zz 以防万一
+
   lats = readfits(Tfiles[j], ext=3, /silent)
-  lats = reform(lats) ; <--- Good practice to reform this too
+  lats = reform(lats, n_elements(lats)) ; 同样处理 lats
 
   ; prepare output directory
   dirname = outdir + strjoin((strsplit(file_basename(Tfiles[j]), '.', /ext))[0:-2], '.')
   if not file_test(dirname, /dir) then file_mkdir, dirname
 
   ; loop throughout longitudes
-  for i=0, n_elements(subslon)-1 do begin 
+  for i=0, n_elements(subslon)-1 do begin
 
     print, 'Sub-Earth longitude ', subelon[i]
-    
+
     ; calculate observing geometry
     sunpos = vect_match_view(rd2xyz([subslon[i], subslat[i]]), subelat[i], subelon[i], 0) * rh[i] * 1.496e8
     vert1 = vect_match_view(vert, subelat[i], subelon[i], 0)
     res = pxlscl / 206265000 * delta[i] * 1.496e8   ; image resolution in km/s
-    
+
     mesh_geomap, vert1, tri, sunpos, delta[i] * 1.496e8, imap, emap, amap, mask, pltmap, xres=res, yres=res, xs=ys, ys=ys
-    
+
     ; save plate map file
     suffix = '_' + string(round(subelon[i]), format='(i3.3)') + '.fits'
 
@@ -125,9 +153,9 @@ for j=0, n_elements(Tfiles) - 1 do begin
     writefits, outfile, amap, /append
 
     ; calculate tpm for plate shape model
-    ; Because hour_angle is now reformed (1D), [hour_angle, 360] will work correctly
-    temp_list = tpm_sph2plt(vert, tri, tref, subslon[i], time=[hour_angle, 360], lats=lats)
-    
+    ; 使用提前构建好的 time_arg，避免在函数调用里拼接
+    temp_list = tpm_sph2plt(vert, tri, tref, subslon[i], time=time_arg, lats=lats)
+
     ; temperature image
     tempmap = tpm_mapping(temp_list, pltmap, depth=zz, zz=zz)
 
@@ -154,5 +182,6 @@ for j=0, n_elements(Tfiles) - 1 do begin
   endfor
 
 endfor
+
 
 end
