@@ -14,7 +14,7 @@ shape = 'gany'   ; use Juno shape model
 
 if shape eq 'gany' then begin
   shapefile = '/Users/zouxd/Documents/GitHub/Thermal_fit/Ganymed/Ganymed_261shape_tmp.plt';
-  trefdir = '/Users/zouxd/Documents/GitHub/Thermal_fit/Ganymed/KRC/Ganymed/'
+  trefdir = '/Volumes/BLUE/2024-YORPD/Ganymed/KRC/Ganymed/'
   outdir = '/Users/zouxd/Documents/GitHub/Thermal_fit/Ganymed/temp_maps2/'
   subelat = 36.3
   subslat = 18.9
