@@ -76,53 +76,46 @@ print, 'Output Longitudes will be: ', subelon
 
 
 for j=0, n_elements(Tfiles) - 1 do begin
-; load reference temperature array
-  tref = readfits(Tfiles[j], hdr, /silent)
 
-  ; --- REPAIR START (Updated) ---
-  
-  ; 1. Process LST (Time)
-  ; Read, Cast to Float, and flatten to 1D
+  fname = (strsplit(Tfiles[j], '/', /ext))[-1]
+  print, '--------------------------------------------------'
+  print, 'Processing file: ', fname
+
+  ; 1. Load reference temperature array (Main Data)
+  tref = readfits(Tfiles[j], hdr, /silent)
+  sz_tref = size(tref, /dim) ; Get dimensions: usually [Lat, Time, Depth] or similar
+
+  ; 2. Load and Fix LST (Time)
   lst = float(readfits(Tfiles[j], ext=1, /silent))
   lst = reform(lst, n_elements(lst))
   
-  ; Calculate hour_angle
-  hour_angle = ((lst - 12.0) * 15.0 + 360.0) mod 360.0
-  
-  ; Construct time argument (concatenation happens here, ensure hour_angle is Float)
-  time_arg = [hour_angle, 360.0]
-
-  ; 2. Process ZZ (Depth) - Apply Float Cast + Reform
-  ; This prevents INT errors if the FITS file stores depth as integers
+  ; 3. Load and Fix ZZ (Depth)
   zz = float(readfits(Tfiles[j], ext=2, /silent))
   zz = reform(zz, n_elements(zz))
 
-  ; 3. Process LATS (Latitudes) - Apply Float Cast + Reform
-  ; This prevents INT(360) errors if the FITS file stores lats as integers
+  ; 4. Load and Fix LATS (Latitudes)
   lats = float(readfits(Tfiles[j], ext=3, /silent))
   lats = reform(lats, n_elements(lats))
+
+  ; --- SANITY CHECK START ---
+  ; Check if LST size matches the expected dimension in TREF
+  ; (Assuming TREF is roughly [n_lats, n_time, n_depth])
+  ; Even without knowing exact order, LST should be small (e.g. 48, 360), not 8000+
   
-  ; DEBUG: Print dimensions to catch any corrupted files
-  ; If the script crashes again, these prints will tell us which array is wrong
-  print, 'DEBUG INFO for: ', (strsplit(Tfiles[j], '/', /ext))[-1]
-  print, '  LST Dims: ', size(lst, /dim)
-  print, '  ZZ Dims:  ', size(zz, /dim)
-  print, '  Lats Dims:', size(lats, /dim)
+  if (n_elements(lst) gt 1000) then begin
+     print, '>>> ERROR: Skipping ' + fname
+     print, '    REASON: LST array is suspiciously large (' + strtrim(n_elements(lst),2) + ').'
+     print, '    File likely has corrupted extensions.'
+     continue ; Skip to next file
+  endif
+  
+  ; Optional: Check against TREF dimensions if strict matching is needed
+  ; if (n_elements(lats) ne sz_tref[0]) && (n_elements(lats) ne sz_tref[1]) then ...
+  ; --- SANITY CHECK END ---
 
-  ; --- REPAIR END ---
-  ; 3. 计算 hour_angle
+  ; Calculate hour_angle (Only do this if check passed)
   hour_angle = ((lst - 12.0) * 15.0 + 360.0) mod 360.0
-
-  ; 4. 提前构建 time 参数数组，确保拼接成功
-  ;    将 360.0 (周期) 拼接到 hour_angle 数组末尾
   time_arg = [hour_angle, 360.0]
-  ; --- 修复部分 END ---
-
-  zz = readfits(Tfiles[j], ext=2, /silent)
-  zz = reform(zz, n_elements(zz)) ; 同样处理 zz 以防万一
-
-  lats = readfits(Tfiles[j], ext=3, /silent)
-  lats = reform(lats, n_elements(lats)) ; 同样处理 lats
 
   ; prepare output directory
   dirname = outdir + strjoin((strsplit(file_basename(Tfiles[j]), '.', /ext))[0:-2], '.')
@@ -131,7 +124,7 @@ for j=0, n_elements(Tfiles) - 1 do begin
   ; loop throughout longitudes
   for i=0, n_elements(subslon)-1 do begin
 
-    print, 'Sub-Earth longitude ', subelon[i]
+    print, '  Sub-Earth longitude ', subelon[i]
 
     ; calculate observing geometry
     sunpos = vect_match_view(rd2xyz([subslon[i], subslat[i]]), subelat[i], subelon[i], 0) * rh[i] * 1.496e8
@@ -153,7 +146,7 @@ for j=0, n_elements(Tfiles) - 1 do begin
     writefits, outfile, amap, /append
 
     ; calculate tpm for plate shape model
-    ; 使用提前构建好的 time_arg，避免在函数调用里拼接
+    ; SAFE CALL inside try-catch block conceptually, but here we rely on the inputs being valid now
     temp_list = tpm_sph2plt(vert, tri, tref, subslon[i], time=time_arg, lats=lats)
 
     ; temperature image
@@ -182,6 +175,5 @@ for j=0, n_elements(Tfiles) - 1 do begin
   endfor
 
 endfor
-
 
 end
