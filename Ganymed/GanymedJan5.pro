@@ -14,7 +14,7 @@ shape = 'gany'   ; use Juno shape model
 
 if shape eq 'gany' then begin
   shapefile = '/Users/zouxd/Documents/GitHub/Thermal_fit/Ganymed/Ganymed_261shape_tmp.plt';
-  trefdir = '/Volumes/BLUE/2024-YORPD/Ganymed/KRC/Ganymed/'
+  trefdir = '/Users/zouxd/Documents/GitHub/Thermal_fit/Ganymed/KRC/Ganymed/'
   outdir = '/Users/zouxd/Documents/GitHub/Thermal_fit/Ganymed/temp_maps2/'
   subelat = 36.3
   subslat = 18.9
@@ -83,61 +83,51 @@ for j=0, n_elements(Tfiles) - 1 do begin
 
   ; 1. Load reference temperature array (Main Data)
   tref = readfits(Tfiles[j], hdr, /silent)
-  sz_tref = size(tref, /dim) ; Get dimensions: usually [Lat, Time, Depth] or similar
-
-  ; 2. Load and Fix LST (Time)
+  
+  ; 2. Load LST (Time) & Reform
   lst = float(readfits(Tfiles[j], ext=1, /silent))
   lst = reform(lst, n_elements(lst))
   
-  ; 3. Load and Fix ZZ (Depth)
+  ; --- SANITY CHECK: Skip Corrupted Files ---
+  ; If LST is huge (e.g., 8316 instead of ~48), the file is broken.
+  if (n_elements(lst) gt 1000) then begin
+      print, '>>> ERROR: Skipping ' + fname
+      print, '    REASON: Corrupted Time Extension (Size: ' + strtrim(n_elements(lst),2) + ').'
+      continue ; Jump to the next file immediately
+  endif
+  ; ------------------------------------------
+
+  ; 3. Load ZZ (Depth) & Lats - Only proceed if file is good
   zz = float(readfits(Tfiles[j], ext=2, /silent))
   zz = reform(zz, n_elements(zz))
 
-  ; 4. Load and Fix LATS (Latitudes)
   lats = float(readfits(Tfiles[j], ext=3, /silent))
   lats = reform(lats, n_elements(lats))
 
-  ; --- SANITY CHECK START ---
-  ; Check if LST size matches the expected dimension in TREF
-  ; (Assuming TREF is roughly [n_lats, n_time, n_depth])
-  ; Even without knowing exact order, LST should be small (e.g. 48, 360), not 8000+
-  
-  if (n_elements(lst) gt 1000) then begin
-     print, '>>> ERROR: Skipping ' + fname
-     print, '    REASON: LST array is suspiciously large (' + strtrim(n_elements(lst),2) + ').'
-     print, '    File likely has corrupted extensions.'
-     continue ; Skip to next file
-  endif
-  
-  ; Optional: Check against TREF dimensions if strict matching is needed
-  ; if (n_elements(lats) ne sz_tref[0]) && (n_elements(lats) ne sz_tref[1]) then ...
-  ; --- SANITY CHECK END ---
-
-  ; Calculate hour_angle (Only do this if check passed)
+  ; Calculate hour_angle
   hour_angle = ((lst - 12.0) * 15.0 + 360.0) mod 360.0
   time_arg = [hour_angle, 360.0]
 
-  ; prepare output directory
+  ; Prepare output directory
   dirname = outdir + strjoin((strsplit(file_basename(Tfiles[j]), '.', /ext))[0:-2], '.')
   if not file_test(dirname, /dir) then file_mkdir, dirname
 
-  ; loop throughout longitudes
+  ; Loop throughout longitudes
   for i=0, n_elements(subslon)-1 do begin
 
     print, '  Sub-Earth longitude ', subelon[i]
 
-    ; calculate observing geometry
+    ; Calculate observing geometry
     sunpos = vect_match_view(rd2xyz([subslon[i], subslat[i]]), subelat[i], subelon[i], 0) * rh[i] * 1.496e8
     vert1 = vect_match_view(vert, subelat[i], subelon[i], 0)
-    res = pxlscl / 206265000 * delta[i] * 1.496e8   ; image resolution in km/s
+    res = pxlscl / 206265000 * delta[i] * 1.496e8 
 
     mesh_geomap, vert1, tri, sunpos, delta[i] * 1.496e8, imap, emap, amap, mask, pltmap, xres=res, yres=res, xs=ys, ys=ys
 
-    ; save plate map file
+    ; Save plate map file
     suffix = '_' + string(round(subelon[i]), format='(i3.3)') + '.fits'
-
-    ; save plate files
     outfile = dirname + '/platemap' + suffix
+    
     mkhdr, hdr1, pltmap, /ext
     fxaddpar, hdr1, 'long', subelon[i], 'longitude (deg)'
     writefits, outfile, pltmap, hdr1
@@ -145,16 +135,14 @@ for j=0, n_elements(Tfiles) - 1 do begin
     writefits, outfile, imap, /append
     writefits, outfile, amap, /append
 
-    ; calculate tpm for plate shape model
-    ; SAFE CALL inside try-catch block conceptually, but here we rely on the inputs being valid now
+    ; Calculate tpm 
     temp_list = tpm_sph2plt(vert, tri, tref, subslon[i], time=time_arg, lats=lats)
 
-    ; temperature image
+    ; Temperature image mapping
     tempmap = tpm_mapping(temp_list, pltmap, depth=zz, zz=zz)
 
-    ; save simulation images
+    ; Save simulation images
     outfile = dirname + '/tempmap' + suffix
-    ; prepare primary extension
     mkhdr, hdr1, tempmap, /ext
     fxaddpar, hdr1, 'bunit', 'K'
     for k=0, n_elements(keys) - 1 do begin
@@ -163,11 +151,12 @@ for j=0, n_elements(Tfiles) - 1 do begin
     endfor
     fxaddpar, hdr1, 'long', subelon[i], 'longitude (deg)'
     writefits, outfile, tempmap, hdr1
-    ; first extension: depth
+    
+    ; Append extensions
     mkhdr, hdr1, zz, /ima
     fxaddpar, hdr1, 'bunit', 'm'
     writefits, outfile, zz, hdr1, /append
-    ; second extension: emission angle
+    
     mkhdr, hdr1, emap, /ima
     fxaddpar, hdr1, 'bunit', 'deg'
     writefits, outfile, emap, hdr1, /append
