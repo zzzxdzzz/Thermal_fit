@@ -22,7 +22,7 @@ if shape eq 'gany' then begin
   shape_a = 0.4250
   shape_b = 0.4250
   shape_c = 0.310
-  pxlscl = 2.8 ; pixel scale in mas
+  pxlscl = 0.1 ; pixel scale in mas
 
 endif
 
